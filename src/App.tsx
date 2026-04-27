@@ -114,16 +114,22 @@ function AppContent() {
         isOpen={isSidebarOpen} 
         toggleSidebar={toggleSidebar}
       />
-      <motion.div 
-        layout
-        transition={{ type: 'spring', damping: 30, stiffness: 80 }}
-        className={`flex-1 flex flex-col min-w-0 ${isSidebarOpen ? 'lg:ml-64' : 'ml-0'}`}
+      <div 
+        className="flex-1 flex flex-col min-w-0 transition-all duration-300"
+        onClick={() => {
+          if (isSidebarOpen && window.innerWidth < 1024) {
+            setIsSidebarOpen(false);
+          }
+        }}
       >
         <Header onNavigate={navigate} toggleSidebar={toggleSidebar} title={title} />
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
+          {isSidebarOpen && window.innerWidth < 1024 && (
+            <div className="absolute inset-0 z-10 bg-transparent cursor-pointer lg:hidden" />
+          )}
           {children}
         </main>
-      </motion.div>
+      </div>
     </div>
   );
 
