@@ -1,0 +1,167 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerified() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Entity Validations ---
+
+    function isValidUser(data) {
+      return data.email is string && data.email.size() <= 200
+          && (!('businessName' in data) || (data.businessName is string && data.businessName.size() <= 100))
+          && data.createdAt == request.time
+          && data.isPremium == false
+          && (!('onboarded' in data) || data.onboarded is bool);
+    }
+
+    function isValidDebt(data) {
+      return data.customerName is string && data.customerName.size() <= 200
+          && data.amount is number && data.amount >= 0
+          && data.type in ['to_me', 'i_owe']
+          && data.status in ['pending', 'cleared']
+          && data.timestamp == request.time;
+    }
+
+    function isValidInventoryItem(data) {
+      return data.name is string && data.name.size() <= 200
+          && data.quantity is number && data.quantity >= 0
+          && data.price is number && data.price >= 0
+          && (!('minThreshold' in data) || (data.minThreshold is number && data.minThreshold >= 0))
+          && data.timestamp == request.time;
+    }
+
+    function isValidTransaction(data) {
+      return data.type in ['sale', 'expense']
+          && data.amount is number && data.amount > 0
+          && data.description is string && data.description.size() <= 500
+          && data.timestamp == request.time
+          && (!('category' in data) || (data.category is string && data.category.size() <= 50))
+          && (!('quantity' in data) || (data.quantity is number && data.quantity >= 0))
+          && (!('rawInput' in data) || (data.rawInput is string && data.rawInput.size() <= 1000));
+    }
+
+    function isValidInsight(data) {
+      return data.content is string && data.content.size() <= 2000
+          && data.type in ['trend', 'warning', 'advice']
+          && data.createdAt == request.time;
+    }
+
+    function isValidPayment(data) {
+      return data.checkoutRequestID is string && data.checkoutRequestID.size() <= 100
+          && data.amount is number && data.amount > 0
+          && data.status in ['pending', 'completed', 'failed']
+          && data.timestamp == request.time;
+    }
+
+    function isValidSupplier(data) {
+      return data.name is string && data.name.size() <= 200
+          && (!('contact' in data) || (data.contact is string && data.contact.size() <= 100))
+          && (!('location' in data) || (data.location is string && data.location.size() <= 200))
+          && (!('items' in data) || (data.items is string && data.items.size() <= 1000))
+          && data.timestamp == request.time;
+    }
+
+    // --- Collection Matches ---
+
+    function isUpdateValidUser(data) {
+      return (!('businessName' in data) || (data.businessName is string && data.businessName.size() <= 100))
+          && (!('onboarded' in data) || data.onboarded is bool)
+          && (!('isPremium' in data) || data.isPremium is bool)
+          && data.updatedAt == request.time;
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId)
+                    && incoming().createdAt == existing().createdAt
+                    && incoming().email == existing().email
+                    && isUpdateValidUser(incoming())
+                    && (
+                      // Action: Standard Profile Update
+                      (incoming().isPremium == existing().isPremium && (
+                        incoming().diff(existing()).affectedKeys().hasOnly(['businessName', 'onboarded', 'updatedAt'])
+                      )) ||
+                      // Action: Upgrade to Premium
+                      (existing().isPremium == false && incoming().isPremium == true && (
+                        incoming().diff(existing()).affectedKeys().hasOnly(['isPremium', 'updatedAt'])
+                      ))
+                    );
+
+      match /debts/{debtId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidDebt(incoming());
+        allow update: if isOwner(userId) && isValidDebt(incoming())
+                      && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'timestamp']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /inventory/{inventoryId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidInventoryItem(incoming());
+        allow update: if isOwner(userId) && isValidInventoryItem(incoming())
+                      && incoming().diff(existing()).affectedKeys().hasOnly(['quantity', 'timestamp']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /transactions/{transactionId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(transactionId) && isValidTransaction(incoming());
+        allow update: if isOwner(userId) && isValidTransaction(incoming())
+                      && incoming().diff(existing()).affectedKeys().hasOnly(['type', 'amount', 'description', 'timestamp', 'category', 'quantity', 'rawInput']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /insights/{insightId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(insightId) && isValidInsight(incoming());
+      }
+
+      match /payments/{paymentId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidPayment(incoming());
+      }
+
+      match /suppliers/{supplierId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSupplier(incoming());
+        allow update: if isOwner(userId) && isValidSupplier(incoming())
+                      && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'contact', 'location', 'items', 'timestamp']);
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

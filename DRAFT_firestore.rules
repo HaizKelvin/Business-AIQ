@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    // --- Entity Validations ---
+
+    function isValidUser(data) {
+      return data.email is string && data.email.size() <= 200
+          && (!('businessName' in data) || (data.businessName is string && data.businessName.size() <= 100))
+          && data.createdAt == request.time
+          && data.isPremium == false; // Initial users are not premium
+    }
+
+    function isValidTransaction(data) {
+      return data.type in ['sale', 'expense']
+          && data.amount is number && data.amount > 0
+          && data.description is string && data.description.size() <= 500
+          && data.timestamp is timestamp
+          && (!('category' in data) || (data.category is string && data.category.size() <= 50))
+          && (!('quantity' in data) || (data.quantity is number && data.quantity >= 0))
+          && (!('rawInput' in data) || (data.rawInput is string && data.rawInput.size() <= 1000));
+    }
+
+    function isValidInsight(data) {
+      return data.content is string && data.content.size() <= 2000
+          && data.type in ['trend', 'warning', 'advice']
+          && data.createdAt == request.time;
+    }
+
+    function isValidPayment(data) {
+      return data.checkoutRequestID is string && data.checkoutRequestID.size() <= 100
+          && data.amount is number && data.amount > 0
+          && data.status in ['pending', 'completed', 'failed']
+          && data.timestamp == request.time;
+    }
+
+    // --- Collection Matches ---
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId)
+                    && incoming().createdAt == existing().createdAt
+                    && incoming().email == existing().email
+                    && incoming().isPremium == existing().isPremium // Can't self-promote
+                    && (
+                      incoming().diff(existing()).affectedKeys().hasOnly(['businessName'])
+                      && incoming().businessName is string && incoming().businessName.size() <= 100
+                    );
+
+      match /transactions/{transactionId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(transactionId) && isValidTransaction(incoming());
+        allow update: if isOwner(userId) && isValidTransaction(incoming())
+                      && incoming().diff(existing()).affectedKeys().hasOnly(['type', 'amount', 'description', 'timestamp', 'category', 'quantity', 'rawInput']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /insights/{insightId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        // Only "system" can create insights? For this demo, user can't create insights, but they are generated via AI.
+        // In a real app, this would be a Cloud Function. For now, we'll allow the user to save them for simplicity,
+        // but strictly validate.
+        allow create: if isOwner(userId) && isValidId(insightId) && isValidInsight(incoming());
+      }
+
+      match /payments/{paymentId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidPayment(incoming());
+        // No client updates for payments to prevent status spoofing
+      }
+    }
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account information for Biashara Smart AI.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email", "description": "User email address" },
+        "businessName": { "type": "string", "description": "Name of the business" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" },
+        "isPremium": { "type": "boolean", "description": "Whether the user is on a premium plan" }
+      },
+      "required": ["email", "createdAt"]
+    },
+    "Debt": {
+      "title": "Debt Record",
+      "description": "Information about a debt owed to the business or by the business.",
+      "type": "object",
+      "properties": {
+        "customerName": { "type": "string", "description": "Name of the person or entity" },
+        "amount": { "type": "number", "description": "Amount in KES" },
+        "type": { "type": "string", "enum": ["to_me", "i_owe"], "description": "Whether it's a receivable or payable" },
+        "status": { "type": "string", "enum": ["pending", "cleared"], "description": "Current status of the debt" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerName", "amount", "type", "status", "timestamp"]
+    },
+    "InventoryItem": {
+      "title": "Inventory Item",
+      "description": "Product in stock.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Product name" },
+        "quantity": { "type": "number" },
+        "price": { "type": "number", "description": "Unit price" },
+        "minThreshold": { "type": "number", "description": "Low stock alert threshold" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "quantity", "price", "timestamp"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A sale or expense record.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["sale", "expense"], "description": "Type of transaction" },
+        "description": { "type": "string", "description": "Natural language or short description" },
+        "amount": { "type": "number", "description": "Amount in KES" },
+        "category": { "type": "string", "description": "Expense category (stock, rent, etc) or sale item" },
+        "quantity": { "type": "number", "description": "Quantity for sales" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the transaction occurred" },
+        "rawInput": { "type": "string", "description": "The original voice/text input if AI was used" }
+      },
+      "required": ["type", "description", "amount", "timestamp"]
+    },
+    "Insight": {
+      "title": "AI Insight",
+      "description": "AI-generated business advice and patterns.",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string", "description": "The insight text" },
+        "type": { "type": "string", "enum": ["trend", "warning", "advice"], "description": "Type of insight" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the insight was generated" }
+      },
+      "required": ["content", "type", "createdAt"]
+    },
+    "Payment": {
+      "title": "M-Pesa Payment",
+      "description": "Log of M-Pesa payment attempts and successes.",
+      "type": "object",
+      "properties": {
+        "checkoutRequestID": { "type": "string", "description": "M-Pesa Checkout Request ID" },
+        "amount": { "type": "number", "description": "Amount paid" },
+        "phoneNumber": { "type": "string", "description": "Customer phone number" },
+        "status": { "type": "string", "enum": ["pending", "completed", "failed"], "description": "Payment status" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["checkoutRequestID", "amount", "phoneNumber", "status", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Root user profile document."
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Individual sales and expenses for the user."
+    },
+    "/users/{userId}/insights/{insightId}": {
+      "schema": "Insight",
+      "description": "AI-generated business insights."
+    },
+    "/users/{userId}/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Subscription payment history."
+    },
+    "/users/{userId}/debts/{debtId}": {
+      "schema": "Debt",
+      "description": "Debt records for the user."
+    },
+    "/users/{userId}/inventory/{inventoryId}": {
+      "schema": "InventoryItem",
+      "description": "Inventory management for the user."
+    }
+  }
+}
